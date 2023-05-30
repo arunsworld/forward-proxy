@@ -24,6 +24,7 @@ func main() {
 	var discardErrLogging bool
 	var blockFile string
 	var histLoggerFile string
+	var allowiponly bool
 	app := &cli.App{
 		Name: "forward-proxy",
 		Flags: []cli.Flag{
@@ -64,6 +65,12 @@ func main() {
 				Aliases:     []string{"l"},
 				Destination: &histLoggerFile,
 			},
+			&cli.BoolFlag{
+				Name:        "allowiponly",
+				Value:       false,
+				Aliases:     []string{"ip"},
+				Destination: &allowiponly,
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			hlogger := newFileBasedHistLogger(histLoggerFile)
@@ -75,7 +82,7 @@ func main() {
 			if !discardErrLogging {
 				opts = append(opts, socks5.WithLogger(socks5.NewLogger(log.New(os.Stdout, "socks5: ", log.LstdFlags))))
 			}
-			blocker, err := standardStaticFQDNBlocker(blockFile, acceptLogging, blockedLogging, hlogger)
+			blocker, err := standardStaticFQDNBlocker(blockFile, acceptLogging, blockedLogging, hlogger, allowiponly)
 			if err != nil {
 				return err
 			}
@@ -128,7 +135,7 @@ type blockConfig struct {
 	BlockList map[string][]string
 }
 
-func standardStaticFQDNBlocker(blockFile string, acceptLogging, blockedLogging bool, hl forwardproxy.HistLogger) (socks5.RuleSet, error) {
+func standardStaticFQDNBlocker(blockFile string, acceptLogging, blockedLogging bool, hl forwardproxy.HistLogger, allowiponly bool) (socks5.RuleSet, error) {
 	contents, err := os.ReadFile(blockFile)
 	if err != nil {
 		return nil, err
@@ -149,6 +156,9 @@ func standardStaticFQDNBlocker(blockFile string, acceptLogging, blockedLogging b
 	}
 	if hl != nil {
 		opts = append(opts, forwardproxy.WithHistLogger(hl))
+	}
+	if allowiponly {
+		opts = append(opts, forwardproxy.WithIPOnlyTrafficAllowed())
 	}
 	return forwardproxy.NewStaticFQDNBlocker(opts...), nil
 }

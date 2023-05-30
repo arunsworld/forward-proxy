@@ -2,6 +2,7 @@ package forwardproxy
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 
@@ -24,6 +25,7 @@ type StaticFQDNBlocker struct {
 	blockedFQDN                   []blockList
 	acceptLogging, blockedLogging bool
 	histLogger                    HistLogger
+	allowIPOnlyTraffic            bool
 }
 
 type blockList struct {
@@ -34,7 +36,7 @@ type blockList struct {
 func (cc *StaticFQDNBlocker) Allow(ctx context.Context, req *socks5.Request) (context.Context, bool) {
 	switch req.Command {
 	case statute.CommandConnect:
-		if allow, reason := cc.allow(req.DestAddr.FQDN); !allow {
+		if allow, reason := cc.allow(req.DestAddr.FQDN, req.DestAddr.String()); !allow {
 			if cc.blockedLogging {
 				log.Printf("[StaticFQDNBlocker] Blocked traffic by %s to %s", reason, req.DestAddr.FQDN)
 			}
@@ -44,10 +46,18 @@ func (cc *StaticFQDNBlocker) Allow(ctx context.Context, req *socks5.Request) (co
 			return ctx, false
 		} else {
 			if cc.acceptLogging {
-				log.Printf("[StaticFQDNBlocker] Allowed traffic to %s", req.DestAddr.FQDN)
+				if req.DestAddr.FQDN == "" {
+					log.Printf("[StaticFQDNBlocker] Allowed traffic to %s", req.DestAddr.String())
+				} else {
+					log.Printf("[StaticFQDNBlocker] Allowed traffic to %s", req.DestAddr.FQDN)
+				}
 			}
 			if cc.histLogger != nil {
-				cc.histLogger.LogAccepted(req.DestAddr.FQDN)
+				if req.DestAddr.FQDN == "" {
+					cc.histLogger.LogAccepted(req.DestAddr.String())
+				} else {
+					cc.histLogger.LogAccepted(req.DestAddr.FQDN)
+				}
 			}
 			return ctx, true
 		}
@@ -59,10 +69,16 @@ func (cc *StaticFQDNBlocker) Allow(ctx context.Context, req *socks5.Request) (co
 	return ctx, true
 }
 
-func (cc *StaticFQDNBlocker) allow(fqdn string) (bool, string) {
+func (cc *StaticFQDNBlocker) allow(fqdn, address string) (bool, string) {
+	if fqdn == "" {
+		if cc.allowIPOnlyTraffic {
+			return true, ""
+		}
+		return false, fmt.Sprintf("Empty FQDN for address: %s", address)
+	}
 	fqdnSplits := strings.Split(fqdn, ".")
 	if len(fqdnSplits) < 2 {
-		return false, "Invalid Domain"
+		return false, fmt.Sprintf("Invalid Domain (%s)", address)
 	}
 	lenfqdnSplits := len(fqdnSplits)
 	domainName := fqdnSplits[lenfqdnSplits-2] + "." + fqdnSplits[lenfqdnSplits-1]
@@ -105,5 +121,11 @@ func WithBlockedLogging() StaticFQDNBlockerOpt {
 func WithHistLogger(hl HistLogger) StaticFQDNBlockerOpt {
 	return func(cc *StaticFQDNBlocker) {
 		cc.histLogger = hl
+	}
+}
+
+func WithIPOnlyTrafficAllowed() StaticFQDNBlockerOpt {
+	return func(cc *StaticFQDNBlocker) {
+		cc.allowIPOnlyTraffic = true
 	}
 }

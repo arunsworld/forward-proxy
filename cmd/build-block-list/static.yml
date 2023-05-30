@@ -33,6 +33,10 @@ blocklist:
     - crjdgldmb.com
     - jkkfnkxzf.com
     - vucqunlcytukjbp.xyz
+    - balldollars.com
+    - zigighol.xyz
+    - ourcommonwords.com
+    - advertising17.shop
   # from https://v.firebog.net/hosts/AdguardDNS.txt
   https://v.firebog.net/hosts/AdguardDNS.txt:
     - 0-000.store
