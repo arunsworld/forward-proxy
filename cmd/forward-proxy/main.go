@@ -1,14 +1,20 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"os"
+	"os/signal"
+	"syscall"
 
 	forwardproxy "github.com/arunsworld/forward-proxy"
+	"github.com/arunsworld/nursery"
 	"github.com/things-go/go-socks5"
 	"github.com/urfave/cli/v2"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -55,16 +61,21 @@ func main() {
 			&cli.StringFlag{
 				Name:        "histlogger",
 				Value:       "hist-logger.yml",
-				Aliases:     []string{"h"},
+				Aliases:     []string{"l"},
 				Destination: &histLoggerFile,
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
+			hlogger := newFileBasedHistLogger(histLoggerFile)
+
+			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer cancel()
+
 			var opts []socks5.Option
 			if !discardErrLogging {
 				opts = append(opts, socks5.WithLogger(socks5.NewLogger(log.New(os.Stdout, "socks5: ", log.LstdFlags))))
 			}
-			blocker, err := standardStaticFQDNBlocker(blockFile, acceptLogging, blockedLogging)
+			blocker, err := standardStaticFQDNBlocker(blockFile, acceptLogging, blockedLogging, hlogger)
 			if err != nil {
 				return err
 			}
@@ -72,10 +83,40 @@ func main() {
 
 			// Create a SOCKS5 server
 			server := socks5.NewServer(opts...)
-			if err := server.ListenAndServe("tcp", fmt.Sprintf(":%d", port)); err != nil {
+			l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+			if err != nil {
 				return err
 			}
-			return nil
+
+			return nursery.RunConcurrently(
+				func(_ context.Context, errCh chan error) {
+					log.Printf("Serving on: %s", l.Addr().String())
+					if err := server.Serve(l); err != nil {
+						select {
+						case <-ctx.Done():
+							return
+						default:
+						}
+						errCh <- err
+					}
+				},
+				func(lctx context.Context, _ chan error) {
+					select {
+					case <-ctx.Done():
+						log.Printf("Shutting down: %s", l.Addr().String())
+						l.Close()
+					case <-lctx.Done():
+					}
+				},
+				func(lctx context.Context, _ chan error) {
+					var loggerCloser io.Closer = hlogger
+					select {
+					case <-ctx.Done():
+					case <-lctx.Done():
+					}
+					loggerCloser.Close()
+				},
+			)
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
@@ -87,7 +128,7 @@ type blockConfig struct {
 	BlockList map[string][]string
 }
 
-func standardStaticFQDNBlocker(blockFile string, acceptLogging, blockedLogging bool) (socks5.RuleSet, error) {
+func standardStaticFQDNBlocker(blockFile string, acceptLogging, blockedLogging bool, hl forwardproxy.HistLogger) (socks5.RuleSet, error) {
 	contents, err := os.ReadFile(blockFile)
 	if err != nil {
 		return nil, err
@@ -105,6 +146,9 @@ func standardStaticFQDNBlocker(blockFile string, acceptLogging, blockedLogging b
 	}
 	if blockedLogging {
 		opts = append(opts, forwardproxy.WithBlockedLogging())
+	}
+	if hl != nil {
+		opts = append(opts, forwardproxy.WithHistLogger(hl))
 	}
 	return forwardproxy.NewStaticFQDNBlocker(opts...), nil
 }

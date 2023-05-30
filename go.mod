@@ -3,9 +3,10 @@ module github.com/arunsworld/forward-proxy
 go 1.19
 
 require (
+	github.com/arunsworld/nursery v0.6.0
 	github.com/things-go/go-socks5 v0.0.3
 	github.com/urfave/cli/v2 v2.25.5
-	gopkg.in/yaml.v2 v2.4.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

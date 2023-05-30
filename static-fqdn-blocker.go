@@ -23,6 +23,7 @@ type StaticFQDNBlocker struct {
 	// internal
 	blockedFQDN                   []blockList
 	acceptLogging, blockedLogging bool
+	histLogger                    HistLogger
 }
 
 type blockList struct {
@@ -37,10 +38,16 @@ func (cc *StaticFQDNBlocker) Allow(ctx context.Context, req *socks5.Request) (co
 			if cc.blockedLogging {
 				log.Printf("[StaticFQDNBlocker] Blocked traffic by %s to %s", reason, req.DestAddr.FQDN)
 			}
+			if cc.histLogger != nil {
+				cc.histLogger.LogBlocked(req.DestAddr.FQDN)
+			}
 			return ctx, false
 		} else {
 			if cc.acceptLogging {
 				log.Printf("[StaticFQDNBlocker] Allowed traffic to %s", req.DestAddr.FQDN)
+			}
+			if cc.histLogger != nil {
+				cc.histLogger.LogAccepted(req.DestAddr.FQDN)
 			}
 			return ctx, true
 		}
@@ -92,5 +99,11 @@ func WithAcceptLogging() StaticFQDNBlockerOpt {
 func WithBlockedLogging() StaticFQDNBlockerOpt {
 	return func(cc *StaticFQDNBlocker) {
 		cc.blockedLogging = true
+	}
+}
+
+func WithHistLogger(hl HistLogger) StaticFQDNBlockerOpt {
+	return func(cc *StaticFQDNBlocker) {
+		cc.histLogger = hl
 	}
 }
