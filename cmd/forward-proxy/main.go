@@ -26,6 +26,7 @@ func main() {
 	var histLoggerFile string
 	var allowiponly bool
 	var adminDomainName string
+	var dnsFile string
 	app := &cli.App{
 		Name: "forward-proxy",
 		Flags: []cli.Flag{
@@ -77,6 +78,10 @@ func main() {
 				Value:       "i",
 				Destination: &adminDomainName,
 			},
+			&cli.StringFlag{
+				Name:        "dns",
+				Destination: &dnsFile,
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			hlogger := newFileBasedHistLogger(histLoggerFile)
@@ -95,7 +100,15 @@ func main() {
 			opts = append(opts, socks5.WithRule(blocker))
 
 			// experimental
-			opts = append(opts, socks5.WithResolver(newDNSResolver(adminDomainName)))
+			var dnsOverride map[string]net.IP
+			if dnsFile != "" {
+				v, err := dnsOverridesFromFile(dnsFile)
+				if err != nil {
+					return err
+				}
+				dnsOverride = v
+			}
+			opts = append(opts, socks5.WithResolver(newDNSResolver(adminDomainName, dnsOverride)))
 
 			// Create a SOCKS5 server
 			server := socks5.NewServer(opts...)
