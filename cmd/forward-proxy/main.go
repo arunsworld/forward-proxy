@@ -25,6 +25,7 @@ func main() {
 	var blockFile string
 	var histLoggerFile string
 	var allowiponly bool
+	var adminDomainName string
 	app := &cli.App{
 		Name: "forward-proxy",
 		Flags: []cli.Flag{
@@ -71,6 +72,11 @@ func main() {
 				Aliases:     []string{"ip"},
 				Destination: &allowiponly,
 			},
+			&cli.StringFlag{
+				Name:        "admindomain",
+				Value:       "i",
+				Destination: &adminDomainName,
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			hlogger := newFileBasedHistLogger(histLoggerFile)
@@ -82,11 +88,14 @@ func main() {
 			if !discardErrLogging {
 				opts = append(opts, socks5.WithLogger(socks5.NewLogger(log.New(os.Stdout, "socks5: ", log.LstdFlags))))
 			}
-			blocker, err := standardStaticFQDNBlocker(blockFile, acceptLogging, blockedLogging, hlogger, allowiponly)
+			blocker, err := standardStaticFQDNBlocker(blockFile, acceptLogging, blockedLogging, hlogger, allowiponly, adminDomainName)
 			if err != nil {
 				return err
 			}
 			opts = append(opts, socks5.WithRule(blocker))
+
+			// experimental
+			opts = append(opts, socks5.WithResolver(newDNSResolver(adminDomainName)))
 
 			// Create a SOCKS5 server
 			server := socks5.NewServer(opts...)
@@ -135,7 +144,7 @@ type blockConfig struct {
 	BlockList map[string][]string
 }
 
-func standardStaticFQDNBlocker(blockFile string, acceptLogging, blockedLogging bool, hl forwardproxy.HistLogger, allowiponly bool) (socks5.RuleSet, error) {
+func standardStaticFQDNBlocker(blockFile string, acceptLogging, blockedLogging bool, hl forwardproxy.HistLogger, allowiponly bool, adminDomainName string) (socks5.RuleSet, error) {
 	contents, err := os.ReadFile(blockFile)
 	if err != nil {
 		return nil, err
@@ -159,6 +168,9 @@ func standardStaticFQDNBlocker(blockFile string, acceptLogging, blockedLogging b
 	}
 	if allowiponly {
 		opts = append(opts, forwardproxy.WithIPOnlyTrafficAllowed())
+	}
+	if adminDomainName != "" {
+		opts = append(opts, forwardproxy.WithAllowOverrideFQDN(map[string]struct{}{adminDomainName: {}}))
 	}
 	return forwardproxy.NewStaticFQDNBlocker(opts...), nil
 }

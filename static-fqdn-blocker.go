@@ -11,7 +11,9 @@ import (
 )
 
 func NewStaticFQDNBlocker(opts ...StaticFQDNBlockerOpt) socks5.RuleSet {
-	result := &StaticFQDNBlocker{}
+	result := &StaticFQDNBlocker{
+		allowOverrideFQDN: make(map[string]struct{}),
+	}
 	for _, o := range opts {
 		o(result)
 	}
@@ -26,6 +28,7 @@ type StaticFQDNBlocker struct {
 	acceptLogging, blockedLogging bool
 	histLogger                    HistLogger
 	allowIPOnlyTraffic            bool
+	allowOverrideFQDN             map[string]struct{}
 }
 
 type blockList struct {
@@ -75,6 +78,9 @@ func (cc *StaticFQDNBlocker) allow(fqdn, address string) (bool, string) {
 			return true, ""
 		}
 		return false, fmt.Sprintf("Empty FQDN for address: %s", address)
+	}
+	if _, ok := cc.allowOverrideFQDN[fqdn]; ok {
+		return true, ""
 	}
 	fqdnSplits := strings.Split(fqdn, ".")
 	if len(fqdnSplits) < 2 {
@@ -127,5 +133,13 @@ func WithHistLogger(hl HistLogger) StaticFQDNBlockerOpt {
 func WithIPOnlyTrafficAllowed() StaticFQDNBlockerOpt {
 	return func(cc *StaticFQDNBlocker) {
 		cc.allowIPOnlyTraffic = true
+	}
+}
+
+func WithAllowOverrideFQDN(overrides map[string]struct{}) StaticFQDNBlockerOpt {
+	return func(cc *StaticFQDNBlocker) {
+		for k := range overrides {
+			cc.allowOverrideFQDN[k] = struct{}{}
+		}
 	}
 }
