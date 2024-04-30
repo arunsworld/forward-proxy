@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"net"
 	"os"
 
@@ -38,7 +39,16 @@ func (d dnsResolver) Resolve(ctx context.Context, name string) (context.Context,
 	if err != nil {
 		return ctx, nil, err
 	}
+	log.Printf("local resolution of %s as %s", name, addr.IP)
 	return ctx, addr.IP, err
+}
+
+func (d *dnsResolver) Register(domainName string, address string) {
+	d.domainOverrides[domainName] = net.ParseIP(address)
+}
+
+func (d dnsResolver) Registrations() map[string]net.IP {
+	return d.domainOverrides
 }
 
 type dnsOverride struct {

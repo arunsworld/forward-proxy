@@ -18,7 +18,9 @@ import (
 )
 
 func main() {
+	var hostname string
 	var port int
+	var apiPort int
 	var acceptLogging bool
 	var blockedLogging bool
 	var discardErrLogging bool
@@ -30,12 +32,23 @@ func main() {
 	app := &cli.App{
 		Name: "forward-proxy",
 		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:        "hostname",
+				EnvVars:     []string{"FORWARD_PROXY_HOSTNAME"},
+				Destination: &hostname,
+			},
 			&cli.IntFlag{
 				Name:        "port",
 				Value:       10800,
 				Aliases:     []string{"p"},
 				EnvVars:     []string{"FORWARD_PROXY_PORT"},
 				Destination: &port,
+			},
+			&cli.IntFlag{
+				Name:        "api",
+				Value:       0,
+				EnvVars:     []string{"FORWARD_PROXY_API_PORT"},
+				Destination: &apiPort,
 			},
 			&cli.BoolFlag{
 				Name:        "acceptlogging",
@@ -110,11 +123,18 @@ func main() {
 				}
 				dnsOverride = v
 			}
-			opts = append(opts, socks5.WithResolver(newDNSResolver(adminDomainName, dnsOverride)))
+			dr := newDNSResolver(adminDomainName, dnsOverride)
+			opts = append(opts, socks5.WithResolver(dr))
+
+			apiServer := apiServer{
+				hostname: hostname,
+				port:     apiPort,
+				dr:       dr,
+			}
 
 			// Create a SOCKS5 server
 			server := socks5.NewServer(opts...)
-			l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+			l, err := net.Listen("tcp", fmt.Sprintf("%s:%d", hostname, port))
 			if err != nil {
 				return err
 			}
@@ -136,7 +156,9 @@ func main() {
 					case <-ctx.Done():
 						log.Printf("Shutting down: %s", l.Addr().String())
 						l.Close()
+						apiServer.close()
 					case <-lctx.Done():
+						apiServer.close()
 					}
 				},
 				func(lctx context.Context, _ chan error) {
@@ -146,6 +168,11 @@ func main() {
 					case <-lctx.Done():
 					}
 					loggerCloser.Close()
+				},
+				func(_ context.Context, errCh chan error) {
+					if err := apiServer.serve(); err != nil {
+						log.Printf("unable to start api server: %v", err)
+					}
 				},
 			)
 		},
