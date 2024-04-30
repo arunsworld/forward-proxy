@@ -59,12 +59,14 @@ func main() {
 				Name:        "blockfile",
 				Value:       "fqdn-block.yml",
 				Aliases:     []string{"f"},
+				EnvVars:     []string{"FQDN_BLOCK_FILE"},
 				Destination: &blockFile,
 			},
 			&cli.StringFlag{
-				Name:        "histlogger",
-				Value:       "hist-logger.yml",
+				Name: "histlogger",
+				// Value:       "hist-logger.yml",
 				Aliases:     []string{"l"},
+				EnvVars:     []string{"HIST_LOGGER_FILE"},
 				Destination: &histLoggerFile,
 			},
 			&cli.BoolFlag{

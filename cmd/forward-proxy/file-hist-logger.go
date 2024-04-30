@@ -17,6 +17,9 @@ const maxMessageBuffer = 100
 var writeFrequency = time.Second * 5
 
 func newFileBasedHistLogger(fname string) *fHistLogger {
+	if fname == "" {
+		return nil
+	}
 	blocked, accepted := parseHistogramFile(fname)
 	ctx, cancel := context.WithCancel(context.Background())
 	result := &fHistLogger{
@@ -152,6 +155,9 @@ func (fhl *fHistLogger) generateWriteWorkload(ctx context.Context) {
 }
 
 func (fhl *fHistLogger) Close() error {
+	if fhl == nil {
+		return nil
+	}
 	resp := make(chan responsePayloadWithError[struct{}])
 	fhl.ch <- asynchMessage[struct{}, struct{}]{
 		mType: closeAsynchMessageType,
@@ -168,6 +174,9 @@ func (fhl *fHistLogger) Close() error {
 }
 
 func (fhl *fHistLogger) LogAccepted(fqdn string) {
+	if fhl == nil {
+		return
+	}
 	resp := make(chan responsePayloadWithError[struct{}])
 	fhl.ch <- asynchMessage[string, struct{}]{
 		mType: logAcceptedAsynchMessageType,
@@ -180,6 +189,9 @@ func (fhl *fHistLogger) LogAccepted(fqdn string) {
 }
 
 func (fhl *fHistLogger) LogBlocked(fqdn string) {
+	if fhl == nil {
+		return
+	}
 	resp := make(chan responsePayloadWithError[struct{}])
 	fhl.ch <- asynchMessage[string, struct{}]{
 		mType: logBlockedAsyncMessageType,

@@ -82,12 +82,16 @@ func (cc *StaticFQDNBlocker) allow(fqdn, address string) (bool, string) {
 	if _, ok := cc.allowOverrideFQDN[fqdn]; ok {
 		return true, ""
 	}
+	var domainName string
+	// we need to extract domainName from fqdn to do our checks
 	fqdnSplits := strings.Split(fqdn, ".")
-	if len(fqdnSplits) < 2 {
-		return false, fmt.Sprintf("Invalid Domain (%s)", address)
+	switch len(fqdnSplits) < 2 {
+	case true:
+		domainName = fqdn
+	case false:
+		lenfqdnSplits := len(fqdnSplits)
+		domainName = fqdnSplits[lenfqdnSplits-2] + "." + fqdnSplits[lenfqdnSplits-1]
 	}
-	lenfqdnSplits := len(fqdnSplits)
-	domainName := fqdnSplits[lenfqdnSplits-2] + "." + fqdnSplits[lenfqdnSplits-1]
 	for _, bl := range cc.blockedFQDN {
 		if _, ok := bl.blockedFQDN[fqdn]; ok {
 			return false, bl.name
